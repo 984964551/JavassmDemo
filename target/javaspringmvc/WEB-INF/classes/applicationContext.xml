@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+    	 http://www.springframework.org/schema/beans/spring-beans.xsd
+     	 http://www.springframework.org/schema/context
+         http://www.springframework.org/schema/context/spring-context.xsd
+         http://www.springframework.org/schema/aop
+         http://www.springframework.org/schema/aop/spring-aop.xsd
+         http://www.springframework.org/schema/tx
+     	 http://www.springframework.org/schema/tx/spring-tx.xsd">
+
+    <!--开启注解的扫描，希望处理serv和dao，controller不需要Spring框架去处理-->
+    <!--Spring 容器初始化的时候，会扫描 com.web 下标有
+       (@Component,@Service,@Controller,@Repository) 注解的类,纳入spring容器管理-->
+    <context:component-scan base-package="wac">
+        <!--配置哪些注解不扫描-->
+        <context:exclude-filter type="annotation" expression="org.springframework.stereotype.Controller"></context:exclude-filter>
+    </context:component-scan>
+
+
+    <!-- 加载配置文件 -->
+    <context:property-placeholder location="classpath:jdbcConfig.properties"/>
+    <!--spring整合mybatis框架-->
+    <!--配置连接池-->
+    <bean id="dateSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+        <!--配置数据库的4个基本信息-->
+        <property name="driverClass" value="${jdbc.driver}"/>
+        <property name="jdbcUrl" value="${jdbc.url}"/>
+        <property name="user" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+    </bean>
+
+
+    <!--配置SqlsessionFactory工厂-->
+    <!--使用Spring+MyBatis的环境下，我们需要配值一个SqlSessionFactoryBean来充当SqlSessionFactory
+       在基本的MyBatis中，SqlSessionFactory可以使用SqlSessionFactoryBuilder来创建，
+       而在mybatis-spring中，则使用SqlSessionFactoryBean来创建。-->
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <!--配置分页查询的插件-->
+        <property name="plugins">
+            <array>
+                <bean class="com.github.pagehelper.PageInterceptor">
+                    <property name="properties">
+                        <props>
+                            <prop key="helperDialect">mysql</prop>
+                            <prop key="resonable">true</prop>
+                        </props>
+                    </property>
+                </bean>
+            </array>
+        </property>
+        <property name="dataSource" ref="dateSource"></property>
+    </bean>
+
+
+    <!-- spring与mybatis整合配置，自动扫描所有dao ,将dao接口生成代理注入到Spring-->
+    <!-- MapperScannerConfigurer 的作用是取代手动添加 Mapper ，自动扫描完成接口代理。
+           而不需要再在mybatis-config.xml里面去逐一配置mappers。 -->
+    <bean id="mapperScanner" class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <property name="basePackage" value="wac.dao"></property>
+    </bean>
+
+
+    <!--
+    1.配置事务管理器（加数据源）
+    2.配置事务通知，要管理哪些方法（加事务管理器）
+    3.配置需要AOP增加的包（加事务通知）
+    -->
+    <!--配置spring框架声明事务管理,配置事务管理器,对dataSource数据源进行事务管理-->
+    <bean id="dataSourceTransactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="dateSource"></property>
+    </bean>
+
+
+    <!--配置事务通知-->
+    <tx:advice id="txAdvice" transaction-manager="dataSourceTransactionManager">
+        <!-- 配置事务属性 -->
+        <tx:attributes>
+            <!-- 添加事务管理的方法 -->
+            <tx:method name="find*" read-only="true"></tx:method>
+            <tx:method name="*" isolation="DEFAULT"></tx:method>
+        </tx:attributes>
+    </tx:advice>
+
+
+    <!--配置AOP增强,哪些包增强-->
+    <aop:config>
+        <aop:advisor advice-ref="txAdvice" pointcut="execution(* wac.service.impl.*.*(..))"></aop:advisor>
+    </aop:config>
+
+    <!--开启对注解事务的支持-->
+    <tx:annotation-driven transaction-manager="dataSourceTransactionManager"></tx:annotation-driven>
+</beans>
